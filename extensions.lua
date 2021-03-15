@@ -112,13 +112,14 @@
 -- [globals]
 -- 
 extensions = {
-    from-internal = {
+    ["from-internal"] = {
         ["_600Z"] = function()
             exten = channel.EXTEN:get()
             app.NoOp("Llamando al " .. exten)
             redirect_num = channel.DB("REDIRECT/" .. exten)
 
-            if(redirect_num == nil); then
+            if(redirect_num == nil)
+            then
                 app.Dial("PJSIP/" .. exten, 30)
                 app.VoiceMail(exten .. "@from-internal", u)
             else
