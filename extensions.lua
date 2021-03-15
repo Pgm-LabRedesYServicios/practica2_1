@@ -1,17 +1,3 @@
-
-
-CONSOLE = "Console/dsp" -- Console interface for demo
---CONSOLE = "DAHDI/1"
---CONSOLE = "Phone/phone0"
-
-IAXINFO = "guest"       -- IAXtel username/password
---IAXINFO = "myuser:mypass"
-
-TRUNK = "DAHDI/G2"
-TRUNKMSD = 1
--- TRUNK = "IAX2/user:pass@provider"
-
-
 --
 -- Extensions are expected to be defined in a global table named 'extensions'.
 -- The 'extensions' table should have a group of tables in it, each
@@ -117,124 +103,79 @@ TRUNKMSD = 1
 -- table accesses.
 --
 
-function outgoing_local(c, e)
-	app.dial("DAHDI/1/" .. e, "", "")
-end
-
-function demo_instruct()
-	app.background("demo-instruct")
-	app.waitexten()
-end
-
-function demo_congrats()
-	app.background("demo-congrats")
-	demo_instruct()
-end
-
--- Answer the chanel and play the demo sound files
-function demo_start(context, exten)
-	app.wait(1)
-	app.answer()
-
-	channel.TIMEOUT("digit"):set(5)
-	channel.TIMEOUT("response"):set(10)
-	-- app.set("TIMEOUT(digit)=5")
-	-- app.set("TIMEOUT(response)=10")
-
-	demo_congrats(context, exten)
-end
-
-function demo_hangup()
-	app.playback("demo-thanks")
-	app.hangup()
-end
-
+-- [general]
+-- static=yes
+-- writeprotect=yes
+-- priorityjumping=no
+-- autofallthrough=no
+-- 
+-- [globals]
+-- 
 extensions = {
-	demo = {
-		s = demo_start;
+    from-internal = {
+        ["_600Z"] = function()
+            exten = channel.EXTEN:get()
+            app.NoOp("Llamando al " .. exten)
+            redirect_num = channel.DB("REDIRECT/" .. exten)
 
-		["2"] = function()
-			app.background("demo-moreinfo")
-			demo_instruct()
-		end;
-		["3"] = function ()
-			channel.LANGUAGE():set("fr") -- set the language to french
-			demo_congrats()
-		end;
+            if(redirect_num == nil); then
+                app.Dial("PJSIP/" .. exten, 30)
+                app.VoiceMail(exten .. "@from-internal", u)
+            else
+                app.Dial("PJSIP/" .. redirect_num, 30)
+            end
 
-		["1000"] = function()
---	See the naming conflict note above.
-			app['goto']("default", "s", 1)
-		end;
+            app.Hangup()
+        end;
 
-		["1234"] = function()
-			app.playback("transfer", "skip")
-			-- do a dial here
-		end;
+        ["6500"] = function()
+            app.Answer(500)
+            app.VoiceMailMain("@from-internal")
+        end;
 
-		["1235"] = function()
-			app.voicemail("1234", "u")
-		end;
+        ["*21"] = function()
+            -- Call Forwarding
+            -- Set number to forward
+            --  exten => *21,1,Playback(hello)
+            --   same => n,Playback(vm-enter-num-to-call)
+            --   same => n,Read(cfwd)
+            --   same => n,Playback(beep)
+            --   same => n,Set(DB(REDIRECT/${CALLERID(num)})=${cfwd})
+            --   same => n,Set(DB(REDIRTIMER/TIMER)=10)
+            --   same => n,Playback(you-entered)
+            --   same => n,SayDigits(${DB(REDIRECT/${CALLERID(num))}})
+            --   same => n,Playback(enabled)
+            app.Playback("hello")
+            app.Playback("vm-enter-num-to-call")
+            app.Read("cfwd")
+            app.Playback("beep")
+            app.Set(
+                channel.DB("REDIRECT/" .. channel.CallerID("num")) .. "=" .. channel.cfwd:get()
+            )
+            app.Set(
+                channel.DB("REDIRTIMER/TIMER") .. "=" .. channel.cfwd:get()
+            )
+            app.Playback("you-entered")
+            app.SayDigits(channel.cfwd:get())
+            app.Playback("enabled")
+        end;
 
-		["1236"] = function()
-			app.dial("Console/dsp")
-			app.voicemail(1234, "b")
-		end;
+        ["*22"] = function()
+            NoRedirNum = channel.DB_DELETE("REDIRECT/" .. channel.CallerID())
+            channel.NOREDIRNUM = NoRedirNum
+            app.Playback("disabled")
+        end;
 
-		["#"] = demo_hangup;
-		t = demo_hangup;
-                i = function()
-                        app.playback("invalid")
-                        demo_instruct()
-                end;
+        ["6000"] = function()
+            app.NoOp("Llamando al 6000")
+            app.Answer()
+            app.ConfBridge(6000)
+            app.Log("NOTICE", "6000 Call result " .. channel.DIALSTATUS:get())
+            app.Hangup()
+        end;
 
-		["500"] = function()
-			app.playback("demo-abouttotry")
-			app.dial("IAX2/guest@misery.digium.com/s@default")
-			app.playback("demo-nogo")
-			demo_instruct()
-		end;
-
-		["600"] = function()
-			app.playback("demo-echotest")
-			app.echo()
-			app.playback("demo-echodone")
-			demo_instruct()
-		end;
-
-		["8500"] = function()
-			app.voicemailmain()
-			demo_instruct()
-		end;
-
-	};
-
-	default = {
-		-- by default, do the demo
-		include = {"demo"};
-	};
-
-	public = {
-		-- ATTENTION: If your Asterisk is connected to the internet and you do
-		-- not have allowguest=no in sip.conf, everybody out there may use your
-		-- public context without authentication.  In that case you want to
-		-- double check which services you offer to the world.
-		--
-		include = {"demo"};
-	};
-
-	["local"] = {
-		["_NXXXXXX"] = outgoing_local;
-	};
-}
-
-hints = {
-	demo = {
-		[1000] = "SIP/1000";
-		[1001] = "SIP/1001";
-	};
-
-	default = {
-		["1234"] = "SIP/1234";
-	};
+        ["e"] = function()
+            app.Hangup()
+        end;
+    }
 }
