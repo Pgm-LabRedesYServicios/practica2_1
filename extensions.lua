@@ -113,69 +113,31 @@
 -- 
 extensions = {
     ["from-internal"] = {
-        ["_600Z"] = function()
-            exten = channel.EXTEN:get()
-            app.NoOp("Llamando al " .. exten)
-            redirect_num = channel.DB("REDIRECT/" .. exten)
-
-            if(redirect_num == nil)
-            then
-                app.Dial("PJSIP/" .. exten, 30)
-                app.VoiceMail(exten .. "@from-internal", u)
-            else
-                app.Dial("PJSIP/" .. redirect_num, 30)
-            end
-
-            app.Hangup()
-        end;
-
-        ["6500"] = function()
-            app.Answer(500)
-            app.VoiceMailMain("@from-internal")
-        end;
-
-        ["*21"] = function()
-            -- Call Forwarding
-            -- Set number to forward
-            --  exten => *21,1,Playback(hello)
-            --   same => n,Playback(vm-enter-num-to-call)
-            --   same => n,Read(cfwd)
-            --   same => n,Playback(beep)
-            --   same => n,Set(DB(REDIRECT/${CALLERID(num)})=${cfwd})
-            --   same => n,Set(DB(REDIRTIMER/TIMER)=10)
-            --   same => n,Playback(you-entered)
-            --   same => n,SayDigits(${DB(REDIRECT/${CALLERID(num))}})
-            --   same => n,Playback(enabled)
-            app.Playback("hello")
-            app.Playback("vm-enter-num-to-call")
-            app.Read("cfwd")
-            app.Playback("beep")
-            app.Set(
-                channel.DB("REDIRECT/" .. channel.CallerID("num")) .. "=" .. channel.cfwd:get()
-            )
-            app.Set(
-                channel.DB("REDIRTIMER/TIMER") .. "=" .. channel.cfwd:get()
-            )
-            app.Playback("you-entered")
-            app.SayDigits(channel.cfwd:get())
-            app.Playback("enabled")
-        end;
-
-        ["*22"] = function()
-            NoRedirNum = channel.DB_DELETE("REDIRECT/" .. channel.CallerID())
-            channel.NOREDIRNUM = NoRedirNum
-            app.Playback("disabled")
-        end;
-
-        ["6000"] = function()
-            app.NoOp("Llamando al 6000")
+        ["11888"] = function()
+            counter = 0
             app.Answer()
-            app.ConfBridge(6000)
-            app.Log("NOTICE", "6000 Call result " .. channel.DIALSTATUS:get())
-            app.Hangup()
-        end;
 
-        ["e"] = function()
+            while(counter < 5)
+            do
+                app.Playback("vm-enter-num-to-call")
+                app.Read("department")
+                app.Playback("beep")
+
+                dep = channel.department:get()
+                app.Playback("you-entered")
+                app.SayDigits(dep)
+
+                num = tonumber(dep)
+
+                if(num ~= nil and num <= 3 and num >= 0)
+                then
+                    break
+                else
+                    app.Playback("vm-sorry")
+                    counter = counter + 1
+                end
+            end
+            app.Dial("PJSIP/600" .. dep, 30)
             app.Hangup()
         end;
     }
