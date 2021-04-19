@@ -337,9 +337,100 @@ exten => _6000,1,NoOp(Llamando al 6000)
  same => n,Hangup()
 ```
 
+## Resumen
 
+Con estos cambios, los servicios quedan de tal forma:
+
+Extensión | Servicio
+----------|---------
+6001 | Llamar al 6001
+6002 | Llamar al 6002
+6003 | Llamar al 6003
+6500 | Configurar el buzón de voz
+6000 | Sala de conferencia / llamada grupal
+
+# Lunes 15 marzo 2021:
+
+Implementamos el desvío de llamadas editando el dialplan, 
+
+``` ini
+; --- Individual phone config
+exten => _6001,1,NoOp(Llamando al ${EXTEN})
+ same => n,Set(REDIRECTNUM=${DB(REDIRECT/${EXTEN})})
+ same => n,GotoIf($[${ISNULL(${REDIRECTNUM})}]?internal:redirect)
+ same => n(internal),Dial(PJSIP/${EXTEN},30)
+ same => n,VoiceMail(${EXTEN}@from-internal,u)
+ same => n(redirect),Dial(PJSIP/${REDIRECTNUM},30)
+ same => n,Hangup()
+
+; --- Call Forwarding
+; Set number to forward
+exten => *21,1,Playback(hello)
+ same => n,Playback(vm-enter-num-to-call)
+ same => n,Read(cfwd)
+ same => n,Playback(beep)
+ same => n,Set(DB(REDIRECT/${CALLERID(num)})=${cfwd})
+ same => n,Set(DB(REDIRTIMER/TIMER)=10)
+ same => n,Playback(you-entered)
+ same => n,SayDigits(${DB(REDIRECT/${CALLERID(num))}})
+ same => n,Playback(enabled)
+
+; Disable forwarding
+exten => *22,1,Set(NOREDIRNUM=${DB_DELETE(REDIRECT/${CALLERID(num)})})
+ same => n,Playback(disabled)
+```
+
+Con estos cambios, los servicios nuevos quedan de tal forma:
+
+Extensión | Servicio
+----------|---------
+\*21 | Activar y/o cambiar número de desvio de llamada
+\*22 | Desactivar desvio de llamada
 
 # Jueves 18 marzo 2021:
+Para hacer el callcenter, debido a la relativa complejidad de la lógica a
+expresar en el dialplan, lo escribimos en lua. Para ello, editamos el archivo
+`extensions.lua`:
+
+``` lua
+extensions = {
+    ["from-internal"] = {
+        ["11888"] = function()
+            counter = 0
+            app.Answer()
+
+            while(counter < 5)
+            do
+                app.Playback("vm-enter-num-to-call")
+                app.Read("department")
+                app.Playback("beep")
+
+                dep = channel.department:get()
+                app.Playback("you-entered")
+                app.SayDigits(dep)
+
+                num = tonumber(dep)
+
+                if(num ~= nil and num <= 3 and num >= 0)
+                then
+                    break
+                else
+                    app.Playback("vm-sorry")
+                    counter = counter + 1
+                end
+            end
+            app.Dial("PJSIP/600" .. dep, 30)
+            app.Hangup()
+        end;
+    }
+}
+```
+
+Con este cambio, el servicio queda de tal forma:
+
+Extensión | Servicio
+----------|---------
+11888 | Callcenter para llamar al 6001, 6002 o 6003
 
 # Jueves 1 abril 2021:
 
