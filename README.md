@@ -145,6 +145,199 @@ GRANT ALL ON ALL TABLES IN SCHEMA public TO asterisk;
 Empezamos a seguir la documentacion oficial publicada en el [link](https://wiki.asterisk.org/wiki/display/AST/Hello+World)
 
 # Jueves 11 marzo 2021:
+## Configuración de conexión con Postgres
+Configuramos el conector con la base de datos Postgres en el archivo
+`cdr_pgsql.conf`:
+
+``` ini
+[global]
+hostname=localhost
+port=5432
+dbname=asterisk
+user=asterisk
+password=Obelix
+;appname=asterisk    ; Postgres application_name support (optional). Whitespace not allowed.
+table=cdr           ; SQL table where CDRs will be inserted
+encoding=utf8       ; Encoding of logged characters in Asterisk
+timezone=UTC        ; Uncomment if you want datetime fields in UTC/GMT
+```
+
+Para hacerlo efectivo, tenemos que cargar el módulo de Postgres en `modules.conf`
+
+``` ini
+preload => res_config_pgsql.so
+```
+
+Dentro de `res_odbc.conf` activamos el servicio de logging y le pasamos los
+credenciales para conectarse con la base de datos:
+
+``` ini
+;
+; Permit disabling sections without needing to comment them out.
+; If not specified, it is assumed the section is enabled.
+enabled => yes
+
+; What should we execute to ensure that our connection is still alive?  The
+; statement should return a non-zero value in the first field of its first
+; record.  The default is "select 1".
+sanitysql => select 1
+
+; Enable query logging. This keeps track of the number of prepared queries
+; and executed queries as well as the query that has taken the longest to
+; execute. This can be useful for determining the latency with a database.
+; The data can be viewed using the "odbc show" CLI command.
+; Note that only successful queries are logged currently.
+logging => yes
+
+; Credentials to access the db
+username => asterisk
+password => Obelix
+```
+
+## Configuración de PJSIP
+Una vez configurada la conexión con Postgres, configuramos PJSIP, que será el
+medio por el cual los usuarios del servicio de telefonía se conectarán con
+asterisk.
+
+En el archivo `pjsip.conf` configuramos lo básico, limitamos el reenvio a 70
+saltos, definimos un `user_agent`, especificamos que el dominio por defecto es
+`localhost` y que mande un `keep_alive` cada 300 ms
+
+``` ini
+[global]
+max_forwards=70
+user_agent=LabRedes PBX
+default_realm=localhost
+keep_alive_interval=300
+```
+
+Luego escribimos lo siguiente 3 veces (cambiando 6001 por 6002 y 6003 en cada caso):
+
+``` ini
+; == Numeros de llamar
+[6001]
+type=endpoint
+context=from-internal
+disallow=all
+allow=ulaw
+auth=6001
+aors=6001
+
+[6001]
+type=auth
+auth_type=userpass
+password=unsecurepassword
+username=6001
+
+[6001]
+type=aor
+max_contacts=1
+```
+
+De esta forma definimos en el contexto `from-internal` los usuarios 6001, 6002 y
+6003.
+
+También, para poder llamar, habilitamos los transportes udp, tcp y wss:
+
+``` ini
+; == Transports
+
+[udp_transport]
+type=transport
+protocol=udp
+bind=0.0.0.0
+tos=af42
+cos=3
+
+[wss_transport]
+type=transport
+protocol=wss
+bind=0.0.0.0
+
+[tcp_transport]
+type=transport
+protocol=tcp
+bind=0.0.0.0
+```
+
+## Configuración general del dialplan
+
+En el dialplan se configuran todos los puntos de entrada para llamadas, para
+en el archivo `extensions.conf` escribimos el siguiente bloque para evitar
+que los bloques de configuración se puedan mezclar y evitar reescribir la
+configuración del dialplan
+
+``` ini
+[general]
+static=yes
+writeprotect=yes
+priorityjumping=no
+autofallthrough=no
+```
+
+Al final del bloque `from-internal` del dialplan, ponemos una extensión
+que cuelgue directamente toda llamada a extensión no definida:
+
+``` ini
+exten => e,1,Hangup()
+```
+
+## Configuración llamada normal
+Definimos el contexto del dialplan `from-internal` y ahí configuramos para cada
+usuario la extensión con su número correspondiente. Primero se especifica que
+mediante `Dial` se intente llamar usando PJSIP al número marcado y si no hay
+respuesta tras 30 segundos, que se desvie al buzón de voz.
+
+``` ini
+[from-internal]
+exten => _6001,1,NoOp(Llamando al 6001)
+ same => n,Dial(PJSIP/6001,30)
+ same => n,VoiceMail(6001@from-internal,u)
+ same => n,Hangup()
+```
+
+## Configuración de buzón de voz
+Para el buzón de voz, habiendo especificado previamente en el dialplan que si en
+la llamada directa a un número no se coge, se ejecute la aplicación `VoiceMail`,
+configuramos los buzones de los 3 usuarios en el archivo `voicemail.conf`.
+
+En este archivo especificamos que la contraseña es 8888, el nombre y correos
+ficticios. También que el número máximo de mensajes en el buzón es 10.
+
+```ini
+[from-internal]
+6001 => 8888,Paquito Txokolatero,paquito@example.com,paquito2@example.com,attach=no|tz=central|maxmsg=10
+6002 => 8888,Jose Ortega y Gasset,jose@example.com,jose2@example.com,attach=yes|tz=eastern|maxmsg=10
+6002 => 8888,Manuela Carmena Vuelve,manuela@example.com,manuela2@example.com,attach=yes|tz=eastern|maxmsg=10
+```
+
+```ini
+; Voice Mail entry
+exten => _6500,1,Answer(500)
+ same => n,VoiceMailMain(@from-internal)
+```
+
+## Configuración de sala de llamada
+La aplicación del Dialplan `ConfBridge` nos permite crear salas de conferencia,
+para hacer uso de ella, primero configuramos `confbridge.conf` para que tenga el
+idioma en español:
+
+``` ini
+sound_only_person => /var/lib/asterisk/sounds/es/conf-onlyperson ; The sound played when the user is the only person in the conference.
+sound_only_one => /var/lib/asterisk/sounds/es/confbridge-only-one ; The sound played to a user when there is only one other
+```
+
+En el dialplan habilitamos un punto de entrada para poder llamar a una sala:
+
+``` ini
+exten => _6000,1,NoOp(Llamando al 6000)
+ same => n,Answer()
+ same => n,ConfBridge(6000)
+ same => n,Log(NOTICE, 6000 Call result ${DIALSTATUS})
+ same => n,Hangup()
+```
+
+
 
 # Jueves 18 marzo 2021:
 
