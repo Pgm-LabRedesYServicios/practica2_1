@@ -539,3 +539,94 @@ Extensión | Servicio
 7000 | Inicio de sesión como agente
 7001 | Poner número para antender llamadas en la cola
 7002 | Dejar de atender llamadas en la cola
+
+# Lunes 19 Abril 2021:
+## ARI
+Habilitamos el servicio de la API y lo abrimos para poder acceder a este desde
+otros dispositivos (esto es muy inseguro y debería de configurarse otro
+servicio para únicamente permitir a ciertos usuarios ya que estos servicios
+permiten leer y manipular la configuración de asterisk).
+
+Para habilitar la ARI, cambiamos el archivo `ari.conf`:
+
+``` ini
+[general]
+enabled = yes       ; When set to no, ARI support is disabled.
+pretty = yes        ; When set to yes, responses from ARI are
+                    ; formatted to be human readable.
+allowed_origins = *  ; Comma separated list of allowed origins, for
+                     ; Cross-Origin Resource Sharing. May be set to * to
+                     ; allow all origins.
+[asterisk]
+type = user        ; Specifies user configuration
+read_only = no     ; When set to yes, user is only authorized for
+                   ; read-only requests.
+password = asterisk      ; Crypted or plaintext password (see password_format).
+password_format = plain  ; When set to plain, the password is in plaintext.
+```
+
+Aquí especificamos que la API Rest está habilitada, como no es un servidor de
+producción, que las respuestas de la API están formateadas para que sean
+legibles a los humanos y permitimos el acceso a todos los orígenes.
+
+En el apartado de `[asterisk]` definimos al usuario de la API asterisk, con
+contraseña asterisk y le damos permiso de escritura.
+
+También se necesita abrir el servidor de asterisk para que responda a queries
+fuera de localhost, para ello editamos el archivo `http.conf`:
+
+``` ini
+bindaddr=0.0.0.0
+```
+
+## AMI
+Para poder hacer uso de esta API, tenemos que habilitarla en el archivo
+`manager.conf`:
+
+``` ini
+[general]
+enabled = yes
+
+[username]
+secret=password
+permit=0.0.0.0/0.0.0.0
+read = all
+write = all
+```
+
+## Docker
+Para empezar a empaquetar en un contenedor la aplicación, creamos un Dockerfile
+
+``` dockerfile
+
+FROM andrius/asterisk
+
+RUN apk add --update less psqlodbc asterisk-odbc asterisk-pgsql && \
+    rm -rf /var/cache/apk/*
+```
+
+Aquí no se compila desde fuente la aplicación, pero más adelante veremos como se
+puede hacer un contenedor con la apliación desde fuente.
+
+Para crear este contenedor, necesitamos ejecutar el siguiente comando en el
+directorio donde se encuentra el Dockerfile:
+
+``` sh
+docker build -t zentauro/asterisk:0.1 .
+```
+
+Una vez está creado el contenedor, podemos correr el servicio de asterisk con el
+script `run.sh`:
+
+``` sh
+#!/usr/bin/env bash
+set -euo pipefail
+
+docker run -ti --rm \
+    -v "${PWD}/../logs":/var/log/asterisk \
+    -v "${PWD}/configs":/etc/asterisk \
+    -p 5060:5060 \
+    -p 8088:8088 \
+    -p 5038:5038 \
+    zentauro/asterisk:0.1
+```
