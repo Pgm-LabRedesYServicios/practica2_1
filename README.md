@@ -432,11 +432,6 @@ Extensión | Servicio
 ----------|---------
 11888 | Callcenter para llamar al 6001, 6002 o 6003
 
-# Jueves 1 abril 2021:
-
-# Jueves 8 abril 2021:
-Configuracion de agentes
-
 # Jueves 15 abril 2021:
 En el archivo de agentes, como ha cambiado la configuracion, simplemente
 adaptamos la que hay de ejemplo.
@@ -515,14 +510,6 @@ Un inconveniente de esta modalidad para entrar en cola es que si no se llama al
 7002 antes de cerrar la sesión del teléfono con la centralita, este número
 seguirá registrado para seguir atendiendo llamadas cuando se vuelva a conectar.
 
-Con estos cambios, los servicios quedan de tal forma:
-
-Extensión | Servicio
-----------|---------
-7000 | Inicio de sesión como agente
-7001 | Poner número para antender llamadas en la cola
-7002 | Dejar de atender llamadas en la cola
-
 ```ini
 exten => 7000,1,Log(NOTICE, $[${EXTEN} - 1000] calling from ${CALLERID(num)})
  same => n,Answer()
@@ -543,3 +530,12 @@ exten => 7002,1,Log(NOTICE, $[${EXTEN} - 1000] calling from ${CALLERID(num)})
  same => n,Hangup()
 ```
     
+## Resumen
+
+Con estos cambios, los servicios quedan de tal forma:
+
+Extensión | Servicio
+----------|---------
+7000 | Inicio de sesión como agente
+7001 | Poner número para antender llamadas en la cola
+7002 | Dejar de atender llamadas en la cola
