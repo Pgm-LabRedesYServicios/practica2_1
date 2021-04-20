@@ -539,6 +539,7 @@ Extensión | Servicio
 7000 | Inicio de sesión como agente
 7001 | Poner número para antender llamadas en la cola
 7002 | Dejar de atender llamadas en la cola
+8001 | Llamar para entrar en cola
 
 # Lunes 19 Abril 2021:
 ## ARI
