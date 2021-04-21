@@ -631,3 +631,68 @@ docker run -ti --rm \
     -p 5038:5038 \
     zentauro/asterisk:0.1
 ```
+
+# Uso de la API AMI
+
+En el directorio `apir_py` se encuentra una aplicación de línea de comandos que
+nos permite conectarnos a la api AMI de asterisk para ver los eventos que van
+ocurriendo en el servidor de forma remota.
+
+Para usarla se tiene que especificar el host y puerto donde asterisk está
+escuchando para la api y el nombre y usuario definidos para el uso de esta api.
+
+Para poder correr esta aplicación se necesita la herramienta pipenv y se ejecuta
+de la siguiente forma:
+
+``` shell
+pipenv install
+pipenv shell
+python main.py <resto de argumentos>
+```
+
+La parte relevante del programa en cuestión es la siguiente:
+``` python
+from tornado.ioloop import IOLoop
+from tornado.web import Application
+import asyncio
+from sys import argv, exit
+
+from apir_py.web_api import EventsWebSocket
+from apir_py.asterisk_conn import ast_connect
+
+
+def make_app():
+    return Application([
+        (r"/api", EventsWebSocket)
+    ])
+
+
+def print_handler(e):
+    print(e)
+
+
+def main():
+    if len(argv) != 5:
+        print(f"Usage: {argv[0]} <host> <port> <username> <secret>\n")
+        exit(1)
+
+    try:
+        host = argv[1]
+        port = int(argv[2])
+        username = argv[3]
+        secret = argv[4]
+    except:
+        print("Error while parsing arguments")
+        exit(1)
+
+    ast_conn = ast_connect(host, port, username, secret, print_handler)
+
+    app = make_app()
+    app.listen(8888)
+
+    ast_conn.connect()
+
+
+if __name__ == "__main__":
+    main()
+```
